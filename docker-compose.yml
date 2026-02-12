@@ -1,0 +1,68 @@
+services:
+  # Serviço Mosquitto MQTT
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto-broker
+    ports:
+      - "1883:1883"
+    volumes:
+      # usa o mosquitto.conf da pasta infra que criamos agora
+      - ./infra/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # Serviço Hyperledger Besu (nó Ethereum)
+  besu:
+    image: hyperledger/besu:latest
+    container_name: besu-node
+    ports:
+      - "8545:8545"
+    volumes:
+      - besu-data:/data
+    command: >
+      --rpc-http-enabled
+      --rpc-http-host=0.0.0.0
+      --rpc-http-cors-origins="*"
+      --host-allowlist="*"
+      --miner-enabled
+      --miner-coinbase=0xa7C2b7588Dc639948AfAa6Ef540f11B3c2bb8208
+      --network=dev
+      --data-path=/data
+      --rpc-http-api=ETH,NET,WEB3,ADMIN,MINER
+      --auto-log-bloom-caching-enabled=false
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+  # Orchestrator Python (fala com Besu + Mosquitto)
+  orchestrator:
+    build: ./orchestrator
+    container_name: orchestrator
+    depends_on:
+      - besu
+      - mosquitto
+    environment:
+      - BESU_HTTP_URL=http://besu-node:8545
+      - MQTT_BROKER=mosquitto-broker
+      - MQTT_PORT=1883
+     # dados do novo contrato
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS}
+      - CHAIN_ID=${CHAIN_ID}
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+    volumes:
+      - ./orchestrator:/app
+    networks:
+      - iot-network
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  besu-data:
+
+networks:
+  iot-network:
+    driver: bridge
