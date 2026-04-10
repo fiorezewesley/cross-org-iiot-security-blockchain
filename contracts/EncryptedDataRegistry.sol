@@ -2,17 +2,17 @@
 pragma solidity ^0.8.24;
 
 /// @title EncryptedDataRegistry
-/// @notice Registra, em blockchain, metadados de mensagens cifradas vindas do ambiente IIoT.
-///         A mensagem cifrada em si (ciphertext) continua off-chain (MQTT/Storage), aqui guardamos o "rastro".
+/// @notice Registers the metadata of encrypted messages coming from the IIoT environment in the BC.
+///         The encrypted message itself (ciphertext) remains off-chain... here I'll keep the "trace".
 contract EncryptedDataRegistry {
     struct Record {
-        uint256 id;           // ID interno incremental
-        address publisher;    // quem registrou (endereço Ethereum)
-        string deviceId;      // ID lógico do dispositivo (ex: "sensor_001")
-        string topic;         // tópico MQTT usado (ex: "sensors/sensor_001/data")
-        string abePolicy;     // política ABE aplicada (ex: "role:engineer AND level:2")
-        string cipherHash;    // hash / referência do ciphertext (ex: SHA256 ou IPFS hash)
-        uint256 timestamp;    // bloco.timestamp na criação
+        uint256 id;           // Internal incremental ID
+        address publisher;    // who registered (Ethereum address)
+        string deviceId;      // Logical ID of the device (e.g., "sensor_001")
+        string topic;         // MQTT topic used (e.g., "sensors/sensor_001/data")
+        string abePolicy;     // ABE policy applied (e.g., "role:engineer AND level:2")
+        string cipherHash;    // Hash/reference of the ciphertext (e.g., SHA256 or IPFS hash)
+        uint256 timestamp;    // block.timestamp at creation
     }
 
     uint256 private _lastId;
@@ -28,12 +28,12 @@ contract EncryptedDataRegistry {
         uint256 timestamp
     );
 
-    /// @notice Registra um novo evento de dado cifrado.
-    /// @param deviceId  Identificador lógico do dispositivo IIoT.
-    /// @param topic     Tópico MQTT em que a mensagem foi publicada.
-    /// @param abePolicy Política ABE usada na cifragem.
-    /// @param cipherHash Hash ou referência do ciphertext (off-chain).
-    /// @return id       ID interno gerado para esse registro.
+    /// @notice Registers a new encrypted data event.
+    /// @param deviceId  Logical ID of the IIoT device.
+    /// @param topic     MQTT topic where the message was published.
+    /// @param abePolicy ABE policy used in the encryption.
+    /// @param cipherHash Hash or reference of the ciphertext (off-chain).
+    /// @return id       Internal ID generated for this record.
     function storeRecord(
         string calldata deviceId,
         string calldata topic,
@@ -69,7 +69,7 @@ contract EncryptedDataRegistry {
         return id;
     }
 
-    /// @notice Recupera um registro pelo ID interno.
+    /// @notice Retrieves a record by its internal ID.
     function getRecord(uint256 id)
         external
         view
@@ -97,7 +97,7 @@ contract EncryptedDataRegistry {
         );
     }
 
-    /// @notice Retorna o último ID inserido (útil pra saber o tamanho atual).
+    /// @notice Returns the last inserted ID (useful for knowing the current size).
     function lastId() external view returns (uint256) {
         return _lastId;
     }
