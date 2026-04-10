@@ -31,7 +31,8 @@ The system is structured in four conceptual layers:
 - [System Architecture](architecture.md)
 - [Experimental Environment](experimental-environment.md)
 - [Experimental Results](results.md)
-- [Procedures of [Test](tests.md)
+- [Test](tests.md)
+- [Source Code](code.md)
 
 ## Contribution
 
