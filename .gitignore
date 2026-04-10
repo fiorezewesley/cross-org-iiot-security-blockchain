@@ -1,3 +1,4 @@
+fiorezewesley@fiorezewesley:~/Documentos/nova-stack-dez26$ cat .gitignore
 # Secrets / env
 .env
 .env.*

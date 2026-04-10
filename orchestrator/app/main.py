@@ -8,29 +8,23 @@ from web3 import Web3
 import paho.mqtt.client as mqtt
 
 
-# ================================
-# CONFIGURAÇÕES VIA VARIÁVEIS DE AMBIENTE
-# ================================
+# Environment variable settings
 BESU_HTTP_URL = os.getenv("BESU_HTTP_URL", "http://besu-node:8545")
 
-# aceita MQTT_BROKER (preferencial) ou MQTT_HOST (fallback)
+# I set to accept either MQTT_BROKER (preferred) or MQTT_HOST (fallback).
 MQTT_HOST = os.getenv("MQTT_BROKER", os.getenv("MQTT_HOST", "mosquitto-broker"))
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 CONTRACT_ADDRESS = (os.getenv("CONTRACT_ADDRESS") or "").strip()
 DEPLOYER_PRIVATE_KEY = (os.getenv("DEPLOYER_PRIVATE_KEY") or "").strip()
 
-# (opcional) se você quiser forçar chain_id via env.
-# se vazio, vamos usar w3.eth.chain_id (recomendado)
 CHAIN_ID_ENV = os.getenv("CHAIN_ID")
 
 MQTT_TEST_TOPIC = "test/hello"
-MQTT_SENSOR_TOPIC = "sensors/#"  # wildcard para qualquer sensor
+MQTT_SENSOR_TOPIC = "sensors/#" 
 
 
-# ================================
-# ABI MÍNIMA DO CONTRATO (SEM ARQUIVO)
-# ================================
+# Minimum Contract ABI 
 ENCRYPTED_DATA_REGISTRY_ABI = [
     {
         "inputs": [
@@ -69,9 +63,7 @@ ENCRYPTED_DATA_REGISTRY_ABI = [
 ]
 
 
-# ================================
-# CONEXÃO BESU
-# ================================
+# BEsu connection
 def wait_for_besu(max_tries: int = 15, delay: int = 4) -> Optional[Web3]:
     print(f"[orchestrator] Testando conexão com Besu em {BESU_HTTP_URL}")
 
@@ -123,9 +115,7 @@ def test_besu_basic_calls(w3: Optional[Web3]) -> None:
         print(f"[orchestrator] ERRO ao realizar chamadas básicas no Besu: {e}")
 
 
-# ================================
-# CONTRATO + SENDER
-# ================================
+# Contract + sender
 def make_contract(w3: Web3):
     if not CONTRACT_ADDRESS:
         raise RuntimeError("CONTRACT_ADDRESS não definido no ambiente.")
@@ -164,11 +154,11 @@ def send_store_record(
 
     nonce = w3.eth.get_transaction_count(sender, "pending")
 
-    # em devnet: usar gasPrice baixo e gas_limit "teto"
+    # In devnet: use low gasPrice and a "high" gas_limit
     gas_limit = 1_200_000
     gas_price = w3.to_wei(1, "gwei")
 
-    # chainId: preferir o do nó; se CHAIN_ID estiver setado, usar.
+    # chainId: prefer the node's; but if CHAIN_ID is set, I'll use it.
     chain_id = int(CHAIN_ID_ENV) if (CHAIN_ID_ENV and CHAIN_ID_ENV.isdigit()) else w3.eth.chain_id
 
     tx = contract.functions.storeRecord(
@@ -201,9 +191,7 @@ def send_store_record(
     return tx_hex, receipt.status
 
 
-# ================================
-# MQTT: TESTE + LISTENER
-# ================================
+# MQTT: TEST + LISTENER
 def test_mqtt_publish() -> None:
     print(f"[orchestrator] Testando conexão MQTT em {MQTT_HOST}:{MQTT_PORT}")
 
@@ -248,7 +236,7 @@ def start_mqtt_sensor_listener(w3: Web3, contract):
         payload_text = msg.payload.decode("utf-8", errors="ignore")
         print(f"[orchestrator] [MQTT SENSOR] tópico='{msg.topic}' payload_raw='{payload_text}'")
 
-        # tenta JSON
+        
         try:
             data = json.loads(payload_text)
             print(f"[orchestrator] [MQTT SENSOR] payload_json={data}")
@@ -258,7 +246,7 @@ def start_mqtt_sensor_listener(w3: Web3, contract):
         device_id = data.get("sensor_id", "unknown")
         topic = msg.topic
 
-        # placeholder (você troca pelo ABE real depois)
+        # placeholder (replace this with the real ABE later)
         abe_policy = "role:engineer AND org:A"
         cipher_hash = hashlib.sha256(payload_text.encode("utf-8")).hexdigest()
 
@@ -271,9 +259,9 @@ def start_mqtt_sensor_listener(w3: Web3, contract):
                 abe_policy=abe_policy,
                 cipher_hash=cipher_hash,
             )
-            print(f"[orchestrator] ✅ on-chain OK. status={status} tx={tx_hex}")
+            print(f"[orchestrator] on-chain OK. status={status} tx={tx_hex}")
         except Exception as e:
-            print(f"[orchestrator] ❌ ERRO ao registrar on-chain: {e}")
+            print(f"[orchestrator] ERRO ao registrar on-chain: {e}")
 
     client.on_connect = on_connect
     client.on_message = on_message
@@ -283,9 +271,7 @@ def start_mqtt_sensor_listener(w3: Web3, contract):
     return client
 
 
-# ================================
 # MAIN
-# ================================
 def main():
     print("[orchestrator] Iniciando testes básicos...")
 

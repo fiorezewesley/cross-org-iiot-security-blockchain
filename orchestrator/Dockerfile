@@ -1,28 +1,28 @@
 # Imagem base
 FROM python:3.12-slim
 
-# Diretório de trabalho dentro do container
+# Working directory inside the container
 WORKDIR /app
 
-# Variáveis de ambiente úteis
+# Useful environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Instalar dependências de sistema necessárias para compilar lru-dict (usado pelo web3)
+# Install system dependencies required to compile lru-dict (used by web3)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Copiar arquivo de dependências Python
+# Copy Python dependencies file
 COPY requirements.txt .
 
-# Instalar dependências Python
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código da aplicação
+# Copy application code
 COPY . .
 
-# Comando de inicialização do orchestrator
-# Ajuste esta linha se o entrypoint do seu projeto for outro arquivo/módulo
+# Orchestrator startup command
+# Pay attention to who the entrypoint is, otherwise I'll need to change
 CMD ["python", "-m", "app.main"]
