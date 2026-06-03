@@ -96,6 +96,29 @@ Expected result:
 
 The repository documentation is organized in the `docs/` directory and is intended for publication on GitHub Pages for dissertation evaluation and technical navigation.
 
-## Future Work
+## Current Experimental Scope
 
-Future versions of this repository will include the isolated ABE module and its integration into the main architecture as an experimental cryptographic component.
+This repository currently includes the MQTT-blockchain integration prototype and an isolated ABE experimental module for evaluating cryptographic protection over IIoT sensor payloads.
+
+The complete end-to-end integration among MQTT, ABE, and blockchain is part of the broader proposed architecture and can be implemented as a subsequent development step.
+
+## ABE Experiments for IIoT Sensor Payloads
+
+This repository also includes an experimental Attribute-Based Encryption (ABE) module for evaluating cryptographic protection over IIoT sensor payloads.
+
+The ABE experiments are available in:
+
+    abe-experiments/
+
+This module evaluates encryption and decryption correctness, processing overhead, ciphertext size expansion, MQTT protected message overhead, access policy complexity, and message volume using simulated and real sensor data.
+
+At the current stage, the repository contains two complementary experimental layers:
+
+1. the MQTT-blockchain integration prototype;
+2. the ABE-based cryptographic evaluation module.
+
+The ABE module is evaluated independently from the blockchain layer. Therefore, the current repository should not be interpreted as a fully integrated end-to-end MQTT-ABE-blockchain implementation. The complete integration among these components is part of the broader proposed architecture and can be implemented as a subsequent development step.
+
+For details, see:
+
+    abe-experiments/README.md
