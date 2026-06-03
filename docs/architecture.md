@@ -53,7 +53,7 @@ Your responsibilities include:
 
 5. Generating a SHA-256 hash of the message content
 
-6. Associating a policy marker for future integration with ABE
+6. Associating an access-policy marker with the message metadata
 
 7. Sending a transaction to the blockchain smart contract
 
@@ -67,9 +67,11 @@ Hyperledger Besu provides an Ethereum-compatible execution environment.
 
 In this architecture, Besu is responsible for:
 
-- registering devices
-- distributing cryptographic keys for data access
-- providing auditability through event logs
+- registering device and message metadata
+- storing auditable records related to IIoT data sharing
+- providing traceability through blockchain transactions and event logs
+
+Cryptographic key generation and ABE-based access control are evaluated separately in the experimental ABE module available in the `abe-experiments/` directory.
 
 The current implementation uses a local development network exposed via JSON-RPC.
 
@@ -108,20 +110,23 @@ The architecture follows fundamental security principles:
 - **Integrity:** guaranteed through cryptographic hashing (SHA-256)
 - **Traceability:** guaranteed through transaction logs on the blockchain
 - **Auditability:** all interactions are recorded on the blockchain
-- **Modularity:** allows for future integration of cryptographic components
+- **Modularity:** allows the MQTT-blockchain prototype and the ABE experimental module to evolve toward a complete integrated architecture
 
 ---
 
-## Integration of ABE
+## ABE Experimental Module
 
-Attribute-Based Cryptography (ABE) will be integrated as a future enhancement.
+Attribute-Based Encryption (ABE) is evaluated in this repository as an isolated experimental security module.
 
-Its objective will be:
+Its objective is:
 
-- to enforce granular access control
-- to allow only authorized entities to decrypt data
+- to enforce granular access control over IIoT sensor payloads
+- to allow only entities with compatible attributes to recover protected data
 - to enable attribute-driven data sharing between organizations
+- to measure the cost of cryptographic protection in terms of processing time and message size
 
-The ABE module is being developed and tested separately and will be integrated into the orchestration layer later.
+The ABE module includes producer-side and subscriber-side scripts, payload size overhead experiments, policy complexity experiments, and real sensor message volume experiments.
+
+The current implementation does not yet represent a complete end-to-end MQTT-ABE-blockchain pipeline. Instead, the MQTT-blockchain prototype and the ABE experiments are complementary layers that support the broader proposed architecture.
 
 ---
