@@ -23,3 +23,11 @@ cache/
 
 # OS
 .DS_Store
+# Integrated PoC runtime artifacts
+integrated-poc/runtime/
+integrated-poc/**/*.key
+integrated-poc/**/*.usk
+integrated-poc/**/*.bin
+integrated-poc/**/*.pem
+integrated-poc/**/*.p12
+integrated-poc/**/*.pfx
