@@ -1,8 +1,15 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 BASE_DIR = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = BASE_DIR.parent
+
+# Carrega variáveis do .env principal do projeto e, se existir, da PoC integrada.
+load_dotenv(PROJECT_ROOT / ".env")
+load_dotenv(BASE_DIR / ".env")
 
 # RPC do Besu.
 # Quando rodar do host Ubuntu: http://127.0.0.1:8545
@@ -22,10 +29,9 @@ CONTRACT_ABI_PATH = os.getenv(
 # Deve ser carregada via variável de ambiente. Não versionar chaves.
 PRIVATE_KEY = os.getenv("PRIVATE_KEY", "")
 
-# Conta derivada da PRIVATE_KEY. Será calculada pelo blockchain_client.py.
 CHAIN_ID = int(os.getenv("CHAIN_ID", "1337"))
 
-# Tópicos MQTT da PoC integrada.
+# MQTT
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
