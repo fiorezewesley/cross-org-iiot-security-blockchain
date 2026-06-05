@@ -31,3 +31,8 @@ integrated-poc/**/*.bin
 integrated-poc/**/*.pem
 integrated-poc/**/*.p12
 integrated-poc/**/*.pfx
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
