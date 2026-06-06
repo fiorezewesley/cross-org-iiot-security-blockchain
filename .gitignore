@@ -31,6 +31,17 @@ integrated-poc/**/*.bin
 integrated-poc/**/*.pem
 integrated-poc/**/*.p12
 integrated-poc/**/*.pfx
+# Integrated PoC generated runtime folders
+integrated-poc/runtime/keys/
+integrated-poc/runtime/openabe_exports/
+integrated-poc/runtime/demo_runs/
+integrated-poc/runtime/*.jsonl
+integrated-poc/runtime/*.csv
+integrated-poc/runtime/*.log
+integrated-poc/runtime/**/*.log
+integrated-poc/runtime/**/*.json
+
+
 
 # Python virtual environment
 .venv/
