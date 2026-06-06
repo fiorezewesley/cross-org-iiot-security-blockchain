@@ -42,17 +42,26 @@ def main():
     )
     print_receipt("[2] Subscriber device registered", receipt)
 
+    receipt = client.register_subscriber_attributes(
+        DEFAULT_SUBSCRIBER_ID,
+        "|attr1"
+    )
+    print_receipt("[3] Subscriber attributes registered", receipt)
+
     receipt = client.register_topic_policy(
         DEFAULT_PROTECTED_TOPIC,
         DEFAULT_ABE_POLICY
     )
-    print_receipt("[3] Topic policy registered", receipt)
+    print_receipt("[4] Topic policy registered", receipt)
 
     policy = client.get_topic_policy(DEFAULT_PROTECTED_TOPIC)
+    attributes = client.get_subscriber_attributes(DEFAULT_SUBSCRIBER_ID)
 
-    print("[4] Policy read from blockchain")
+    print("[5] Policy and attributes read from blockchain")
     print("topic:", DEFAULT_PROTECTED_TOPIC)
     print("policy:", policy)
+    print("subscriber:", DEFAULT_SUBSCRIBER_ID)
+    print("attributes:", attributes)
     print("-" * 80)
 
     if policy != DEFAULT_ABE_POLICY:
@@ -60,9 +69,13 @@ def main():
             f"Unexpected policy. Expected '{DEFAULT_ABE_POLICY}', got '{policy}'."
         )
 
-    print("[OK] On-chain devices and topic policy are ready.")
+    if attributes != "|attr1":
+        raise RuntimeError(
+            f"Unexpected attributes. Expected '|attr1', got '{attributes}'."
+        )
+
+    print("[OK] On-chain devices, subscriber attributes and topic policy are ready.")
 
 
 if __name__ == "__main__":
     main()
-

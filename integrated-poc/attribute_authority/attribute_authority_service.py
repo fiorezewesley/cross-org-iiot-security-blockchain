@@ -2,7 +2,10 @@ from pathlib import Path
 import sys
 import time
 import argparse
-from typing import List
+import json
+import base64
+from datetime import datetime, timezone
+from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(BASE_DIR / "shared"))
@@ -11,96 +14,34 @@ from blockchain_client import BlockchainClient
 from openabe_client import OpenABEClient
 from hash_utils import sha256_text
 from poc_logger import append_event, append_metric, elapsed_ms, now_perf
-from config import DEFAULT_AUTHORIZED_ATTRIBUTES
+from ecies_utils import ecies_encrypt
 
 
 blockchain = BlockchainClient()
 abe = OpenABEClient()
 
+SUBSCRIBER_PUBLIC_KEY_PATH = (
+    BASE_DIR / "runtime" / "keys" / "consumer_001" / "subscriber_ecies_public.pem"
+)
 
-def normalize_attributes(attributes: str) -> List[str]:
+
+def process_request(request: dict, attributes: Optional[str] = None):
     """
-    Converts OpenABE-style attributes into a Python list.
+    Processes a blockchain access request.
 
-    Example:
-        '|attr1|attr2' -> ['attr1', 'attr2']
+    Correct CP-ABE behavior:
+    - The Attribute Authority does not decide whether the subscriber satisfies
+      the topic policy.
+    - The Attribute Authority retrieves the subscriber attributes from the
+      blockchain and generates an OpenABE user secret key for those attributes.
+    - The effective access decision occurs later, during ABE decryption:
+      if the attributes embedded in the user's key satisfy the ciphertext
+      policy, decryption succeeds; otherwise, it fails.
+
+    The optional 'attributes' argument is kept only for compatibility with
+    older callers. It is ignored as an authoritative source.
     """
-    if not attributes:
-        return []
 
-    return [
-        item.strip()
-        for item in attributes.replace(",", "|").split("|")
-        if item.strip()
-    ]
-
-
-def policy_is_satisfied(policy: str, attributes: str) -> bool:
-    """
-    Minimal evaluator for simple policies used in this PoC.
-
-    Supported examples:
-        attr1 or attr2
-        attr1 and attr2
-
-    This does not replace the cryptographic enforcement performed by ABE.
-    It only represents the Attribute Authority's decision before generating
-    a user key.
-    """
-    policy_normalized = policy.lower().strip()
-    attrs = [attr.lower() for attr in normalize_attributes(attributes)]
-
-    if not policy_normalized:
-        return False
-
-    if " or " in policy_normalized:
-        required = [
-            item.strip()
-            for item in policy_normalized.split(" or ")
-            if item.strip()
-        ]
-        return any(item in attrs for item in required)
-
-    if " and " in policy_normalized:
-        required = [
-            item.strip()
-            for item in policy_normalized.split(" and ")
-            if item.strip()
-        ]
-        return all(item in attrs for item in required)
-
-    return policy_normalized in attrs
-
-
-def build_key_hash(
-    request_id: int,
-    subscriber_id: str,
-    topic: str,
-    policy: str,
-    attributes: str,
-    keygen_stdout: str,
-    keygen_stderr: str,
-) -> str:
-    """
-    Creates a deterministic evidence hash for the key grant.
-
-    The actual OpenABE user secret key remains inside the OpenABE environment.
-    The blockchain stores only a hash/evidence reference.
-    """
-    material = (
-        f"request_id={request_id}|"
-        f"subscriber_id={subscriber_id}|"
-        f"topic={topic}|"
-        f"policy={policy}|"
-        f"attributes={attributes}|"
-        f"keygen_stdout={keygen_stdout}|"
-        f"keygen_stderr={keygen_stderr}"
-    )
-
-    return sha256_text(material)
-
-
-def process_request(request: dict, attributes: str):
     total_start = now_perf()
 
     request_id = request["request_id"]
@@ -112,7 +53,27 @@ def process_request(request: dict, attributes: str):
     print("request_id:", request_id)
     print("subscriber_id:", subscriber_id)
     print("topic:", topic)
-    print("attributes:", attributes)
+
+    # The policy is read only for logging and traceability.
+    # The AA does not use it to decide whether to generate the key.
+    policy = blockchain.get_topic_policy(topic)
+
+    # The subscriber attributes are retrieved from the blockchain.
+    # These attributes are used to generate the OpenABE user secret key.
+    attributes_from_chain = blockchain.get_subscriber_attributes(subscriber_id)
+
+    print("[attribute_authority] topic policy from blockchain:", policy)
+    print("[attribute_authority] subscriber attributes from blockchain:", attributes_from_chain)
+    print("[attribute_authority] generating OpenABE USK for subscriber attributes")
+
+    if attributes and attributes != attributes_from_chain:
+        print(
+            "[attribute_authority][WARN] CLI/manual attributes ignored. "
+            "Blockchain attributes are being used as authoritative source."
+        )
+        print("[attribute_authority][WARN] manual attributes:", attributes)
+
+    attributes = attributes_from_chain
 
     append_event({
         "component": "attribute_authority",
@@ -120,69 +81,124 @@ def process_request(request: dict, attributes: str):
         "request_id": request_id,
         "subscriber_id": subscriber_id,
         "topic": topic,
+        "policy": policy,
         "attributes": attributes,
+        "attribute_source": "blockchain",
+        "aa_behavior": (
+            "AA generates an OpenABE user secret key from blockchain-registered "
+            "subscriber attributes. Policy satisfaction is enforced by CP-ABE "
+            "during decryption, not by a manual AA decision."
+        ),
     })
 
-    policy = blockchain.get_topic_policy(topic)
-
-    print("[attribute_authority] policy:", policy)
-
-    decision = policy_is_satisfied(policy, attributes)
-
-    print("[attribute_authority] policy satisfied:", decision)
-
-    if not decision:
+    if not attributes:
         total_processing_ms = elapsed_ms(total_start)
 
         append_event({
             "component": "attribute_authority",
-            "event_type": "access_request_denied",
+            "event_type": "access_request_failed",
             "request_id": request_id,
             "subscriber_id": subscriber_id,
             "topic": topic,
             "policy": policy,
             "attributes": attributes,
-            "reason": "attributes_do_not_satisfy_policy",
+            "attribute_source": "blockchain",
+            "reason": "subscriber_has_no_registered_attributes",
         })
 
         append_metric({
             "component": "attribute_authority",
-            "event_type": "access_request_denied",
+            "event_type": "access_request_failed",
             "message_id": f"request:{request_id}",
             "policy": policy,
             "success": False,
             "total_processing_ms": total_processing_ms,
-            "error": "attributes_do_not_satisfy_policy",
+            "error": "subscriber_has_no_registered_attributes",
         })
 
-        print("[attribute_authority] access denied. No key generated.")
+        print("[attribute_authority][ERROR] subscriber has no registered attributes.")
         return
+
+    if not SUBSCRIBER_PUBLIC_KEY_PATH.exists():
+        raise FileNotFoundError(
+            f"Subscriber public key not found: {SUBSCRIBER_PUBLIC_KEY_PATH}. "
+            "Run 09_generate_subscriber_ecies_keypair.py first."
+        )
 
     keygen_start = now_perf()
     keygen_stdout, keygen_stderr = abe.keygen(attributes)
     keygen_ms = elapsed_ms(keygen_start)
 
-    key_hash = build_key_hash(
-        request_id=request_id,
-        subscriber_id=subscriber_id,
-        topic=topic,
-        policy=policy,
-        attributes=attributes,
-        keygen_stdout=keygen_stdout,
-        keygen_stderr=keygen_stderr,
+    exported_usk_path = (
+        BASE_DIR
+        / "runtime"
+        / "openabe_exports"
+        / subscriber_id
+        / f"usk_request_{request_id}.bin"
     )
+
+    abe.export_usk_from_container(exported_usk_path)
+
+    usk_bytes = exported_usk_path.read_bytes()
+    usk_b64 = base64.b64encode(usk_bytes).decode("utf-8")
+
+    usk_artifact = {
+        "type": "OpenABE_USER_SECRET_KEY_BINARY",
+        "request_id": request_id,
+        "subscriber_id": subscriber_id,
+        "topic": topic,
+        "policy": policy,
+        "attributes": attributes,
+        "attribute_source": "blockchain",
+        "filename": exported_usk_path.name,
+        "usk_size_bytes": len(usk_bytes),
+        "usk_b64": usk_b64,
+        "keygen_stdout": keygen_stdout,
+        "keygen_stderr": keygen_stderr,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "note": (
+            "This artifact contains the real OpenABE user secret key generated "
+            "from the subscriber attributes registered on the blockchain. "
+            "The AA does not manually evaluate the topic policy. The effective "
+            "policy enforcement occurs during CP-ABE decryption."
+        ),
+    }
+
+    usk_artifact_json = json.dumps(
+        usk_artifact,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+    key_hash = sha256_text(usk_artifact_json)
+
+    ecies_start = now_perf()
+    encrypted_user_key = ecies_encrypt(
+        usk_artifact_json,
+        SUBSCRIBER_PUBLIC_KEY_PATH,
+    )
+    ecies_encrypt_ms = elapsed_ms(ecies_start)
 
     print("[attribute_authority] OpenABE keygen completed")
     print("keygen_ms:", keygen_ms)
+    print("[attribute_authority] ECIES protection completed")
+    print("ecies_encrypt_ms:", ecies_encrypt_ms)
     print("key_hash:", key_hash)
+    print("exported_usk_path:", exported_usk_path)
+    print("usk_size_bytes:", len(usk_bytes))
+    print("encUSK bytes:", len(encrypted_user_key.encode("utf-8")))
 
     chain_start = now_perf()
-    receipt = blockchain.grant_key(request_id, key_hash)
+    receipt = blockchain.grant_encrypted_key(
+        request_id,
+        encrypted_user_key,
+        key_hash,
+    )
     blockchain_grant_ms = elapsed_ms(chain_start)
 
     total_processing_ms = elapsed_ms(total_start)
 
-    print("[attribute_authority] grantKey transaction")
+    print("[attribute_authority] grantEncryptedKey transaction")
     print("tx_hash:", receipt.get("tx_hash"))
     print("status:", receipt.get("status"))
     print("block_number:", receipt.get("block_number"))
@@ -190,23 +206,29 @@ def process_request(request: dict, attributes: str):
 
     append_event({
         "component": "attribute_authority",
-        "event_type": "key_grant_registered",
+        "event_type": "encrypted_key_grant_registered",
         "request_id": request_id,
         "subscriber_id": subscriber_id,
         "topic": topic,
         "policy": policy,
         "attributes": attributes,
+        "attribute_source": "blockchain",
+        "aa_policy_decision": "not_performed",
+        "abe_enforcement_point": "decryption",
         "key_hash": key_hash,
-        "keygen_stdout": keygen_stdout,
-        "keygen_stderr": keygen_stderr,
+        "encrypted_user_key_bytes": len(encrypted_user_key.encode("utf-8")),
         "tx_hash": receipt.get("tx_hash", ""),
         "block_number": receipt.get("block_number", ""),
         "gas_used": receipt.get("gas_used", ""),
+        "keygen_ms": keygen_ms,
+        "ecies_encrypt_ms": ecies_encrypt_ms,
+        "blockchain_grant_ms": blockchain_grant_ms,
+        "total_processing_ms": total_processing_ms,
     })
 
     append_metric({
         "component": "attribute_authority",
-        "event_type": "key_grant_registered",
+        "event_type": "encrypted_key_grant_registered",
         "message_id": f"request:{request_id}",
         "policy": policy,
         "success": True,
@@ -217,21 +239,11 @@ def process_request(request: dict, attributes: str):
         "error": "",
     })
 
-    append_event({
-        "component": "attribute_authority",
-        "event_type": "attribute_authority_timing",
-        "request_id": request_id,
-        "subscriber_id": subscriber_id,
-        "topic": topic,
-        "keygen_ms": keygen_ms,
-        "blockchain_grant_ms": blockchain_grant_ms,
-        "total_processing_ms": total_processing_ms,
-    })
-
-    print("[attribute_authority] key grant completed successfully.")
+    print("[attribute_authority] encrypted key grant completed successfully.")
+    print("[attribute_authority] CP-ABE policy enforcement will occur during decryption.")
 
 
-def run_once(attributes: str):
+def run_once():
     print("[attribute_authority] checking pending access requests")
     pending = blockchain.get_pending_access_requests()
 
@@ -242,20 +254,21 @@ def run_once(attributes: str):
         return
 
     for request in pending:
-        process_request(request, attributes)
+        process_request(request)
 
 
-def run_loop(attributes: str, interval: float):
+def run_loop(interval: float):
     print("[attribute_authority] starting service loop")
-    print("attributes:", attributes)
+    print("attribute_source: blockchain")
+    print("aa_policy_decision: not_performed")
+    print("abe_enforcement_point: decryption")
     print("interval:", interval)
 
     while True:
         try:
-            run_once(attributes)
+            run_once()
         except Exception as exc:
             error_text = str(exc)
-
             print("[attribute_authority][ERROR]", error_text)
 
             append_event({
@@ -269,34 +282,33 @@ def run_loop(attributes: str, interval: float):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Attribute Authority service for the integrated PoC."
+        description=(
+            "Attribute Authority service that generates OpenABE user secret "
+            "keys from blockchain-registered subscriber attributes and protects "
+            "them with ECIES. The AA does not manually evaluate CP-ABE access "
+            "policies; policy enforcement occurs during ABE decryption."
+        )
     )
 
-    parser.add_argument(
-        "--once",
-        action="store_true",
-        help="Process pending access requests once and exit."
-    )
-
-    parser.add_argument(
-        "--interval",
-        type=float,
-        default=5.0,
-        help="Polling interval in seconds for continuous mode."
-    )
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--interval", type=float, default=5.0)
 
     parser.add_argument(
         "--attributes",
-        default=DEFAULT_AUTHORIZED_ATTRIBUTES,
-        help="Attributes assigned to the subscriber. Example: '|attr1'"
+        default=None,
+        help=(
+            "Legacy argument kept for compatibility. "
+            "Ignored as authoritative source. Subscriber attributes are retrieved "
+            "from the blockchain."
+        ),
     )
 
     args = parser.parse_args()
 
     if args.once:
-        run_once(args.attributes)
+        run_once()
     else:
-        run_loop(args.attributes, args.interval)
+        run_loop(args.interval)
 
 
 if __name__ == "__main__":
