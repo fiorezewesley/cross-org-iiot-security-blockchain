@@ -89,7 +89,7 @@ class BlockchainClient:
     def _send_transaction(self, function_call: Any) -> Dict[str, Any]:
         self.require_account()
 
-        nonce = self.web3.eth.get_transaction_count(self.account.address)
+        nonce = self.web3.eth.get_transaction_count(self.account.address, "pending")
 
         tx = function_call.build_transaction(
             {
