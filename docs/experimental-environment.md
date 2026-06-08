@@ -184,8 +184,9 @@ These characteristics are essential for academic validation and experimental rel
 
 The current environment demonstrates that:
 
-- the infrastructure is stable and reproducible  
-- all components can communicate correctly  
-- the system supports end-to-end integration  
+- the MQTT-blockchain infrastructure is stable and reproducible  
+- the off-chain and on-chain components can communicate correctly  
+- the system supports metadata registration and blockchain-based auditability  
+- the repository also includes an isolated ABE experimental module for evaluating cryptographic protection over IIoT sensor payloads  
 
-This establishes a solid foundation for future experiments, including the integration of cryptographic modules such as Attribute-Based Encryption (ABE).
+This establishes a solid foundation for the broader architecture. The current implementation validates the MQTT-blockchain layer and the ABE layer as complementary experimental components. A complete end-to-end MQTT-ABE-blockchain integration remains a subsequent development step.

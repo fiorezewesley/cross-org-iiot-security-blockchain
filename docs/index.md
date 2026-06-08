@@ -10,12 +10,10 @@ Considering the deterministic nature of smart contracts, the limitations of comp
 
 ## Current Implementation
 
-At the current stage, the prototype integrates:
+At the current stage, the repository includes two complementary experimental layers:
 
-- Hyperledger Besu as a local blockchain network
-- Eclipse Mosquitto as an MQTT broker
-- a Python orchestrator for off-chain coordination
-- a Solidity smart contract for on-chain metadata registration
+- a MQTT-blockchain integration prototype using Hyperledger Besu, Eclipse Mosquitto, a Python orchestrator, and a Solidity smart contract;
+- an isolated Attribute-Based Encryption (ABE) experimental module for evaluating cryptographic protection over IIoT sensor payloads.
 
 ## Architecture Layers
 
@@ -24,7 +22,9 @@ The system is structured in four conceptual layers:
 - **Device Layer:** IIoT sensors that generate data
 - **Communication Layer:** MQTT broker (Mosquitto)
 - **Coordination Layer:** Python orchestrator
-- **Audit Layer:** ABE and Hyperledger Besu (blockchain)
+- **Audit Layer:** Hyperledger Besu for blockchain-based metadata registration
+
+The ABE module is evaluated as an independent experimental security component. It is used to analyze encryption and decryption correctness, processing overhead, ciphertext expansion, MQTT protected message overhead, policy complexity, and message volume with simulated and real sensor data.
 
 ## Navigation
 
@@ -38,4 +38,6 @@ The system is structured in four conceptual layers:
 
 This prototype demonstrates a functional integration between distributed messaging systems and blockchain-based auditability mechanisms.
 
-It serves as a proof of concept for IIoT interoperability across multiple organizations and establishes the basis for the future integration of a cryptographic ABE module for granular access control.
+It also includes an experimental ABE module that evaluates data-centric access control for IIoT sensor payloads. The ABE experiments complement the main prototype by providing evidence on cryptographic overhead, ciphertext size expansion, policy complexity, and real sensor message volume.
+
+The current repository should not be interpreted as a fully integrated end-to-end MQTT-ABE-blockchain implementation. The complete integration among these components is part of the broader proposed architecture and can be implemented as a subsequent development step.
