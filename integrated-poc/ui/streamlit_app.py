@@ -3,6 +3,7 @@ import subprocess
 import json
 import re
 import os
+import shlex
 import streamlit as st
 
 
@@ -18,6 +19,10 @@ st.set_page_config(
     page_title="IIoT ABE Blockchain PoC",
     layout="wide",
 )
+
+
+def q(value: str) -> str:
+    return shlex.quote(str(value))
 
 
 def run_command(command, cwd=PROJECT_DIR):
@@ -106,6 +111,21 @@ def extract_recovered_payload(log_text: str):
         return match.group(1)
 
 
+def extract_mqtt_payload_from_log(log_text: str):
+    if not log_text:
+        return None
+
+    match = re.search(r"\[mqtt_collect\] normalized payload\s*\n(\{.*\})", log_text)
+
+    if not match:
+        return None
+
+    try:
+        return json.loads(match.group(1))
+    except Exception:
+        return match.group(1)
+
+
 def run_and_store(session_key, command):
     with st.spinner("Executando..."):
         returncode, output = run_command(command)
@@ -124,16 +144,40 @@ def show_log(title, content, expanded=False):
             st.info("Nenhum log disponível.")
 
 
+def clear_guided_state():
+    text_keys = [
+        "mqtt_collect_encrypt_log",
+        "request_access_log",
+        "process_access_log",
+        "decrypt_log",
+        "last_request_id",
+    ]
+
+    object_keys = [
+        "last_payload",
+        "last_mqtt_payload",
+    ]
+
+    for key in text_keys:
+        st.session_state[key] = ""
+
+    for key in object_keys:
+        st.session_state[key] = None
+
+
 def init_state():
     defaults = {
         "check_environment_log": "",
         "bootstrap_log": "",
+        "mqtt_collect_encrypt_log": "",
         "request_access_log": "",
         "process_access_log": "",
         "decrypt_log": "",
         "full_demo_log": "",
         "last_request_id": "",
         "last_payload": None,
+        "last_mqtt_payload": None,
+        "selected_subscriber_attributes": "|attr1",
     }
 
     for key, value in defaults.items():
@@ -143,9 +187,16 @@ def init_state():
 
 def get_guided_status():
     guided_request_id = st.session_state.get("last_request_id") or "-"
+    subscriber_attributes = st.session_state.get("selected_subscriber_attributes") or "-"
 
+    mqtt_log = st.session_state.get("mqtt_collect_encrypt_log", "")
     process_log = st.session_state.get("process_access_log", "")
     decrypt_log = st.session_state.get("decrypt_log", "")
+
+    mqtt_ok = bool(
+        mqtt_log
+        and "Real MQTT sensor payload encrypted and stored as current OpenABE ciphertext" in mqtt_log
+    )
 
     process_ok = bool(
         process_log
@@ -157,32 +208,38 @@ def get_guided_status():
         and "[decrypt] recovered message:" in decrypt_log
     )
 
-    return guided_request_id, process_ok, decrypt_ok
+    return guided_request_id, subscriber_attributes, mqtt_ok, process_ok, decrypt_ok
 
 
 def show_execution_status():
     latest_run, latest_demo_summary = get_latest_demo_summary()
 
-    guided_request_id, process_ok, decrypt_ok = get_guided_status()
+    guided_request_id, subscriber_attributes, mqtt_ok, process_ok, decrypt_ok = get_guided_status()
 
     latest_demo_request_id = "-"
 
     if latest_demo_summary:
         latest_demo_request_id = latest_demo_summary.get("request_id", "-")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
 
     with col1:
         st.metric("Request ID guiado", guided_request_id)
 
     with col2:
-        st.metric("Chave ABE guiada", "Gerada" if process_ok else "Pendente")
+        st.metric("Atributos", subscriber_attributes)
 
     with col3:
-        st.metric("Decrypt guiado", "Sucesso" if decrypt_ok else "Pendente")
+        st.metric("Leitura MQTT", "Cifrada" if mqtt_ok else "Pendente")
 
     with col4:
-        st.metric("Última demo completa", latest_demo_request_id)
+        st.metric("Chave ABE", "Gerada" if process_ok else "Pendente")
+
+    with col5:
+        st.metric("Decrypt", "Sucesso" if decrypt_ok else "Pendente")
+
+    with col6:
+        st.metric("Última demo", latest_demo_request_id)
 
     if (
         latest_demo_summary
@@ -207,7 +264,7 @@ def process_access_request(request_id: str):
         ),
         (
             "Recuperação da encUSK pelo subscriber",
-            f"python3 integrated-poc/subscriber_crypto/retrieve_encrypted_usk.py --request-id {request_id}",
+            f"python3 integrated-poc/subscriber_crypto/retrieve_encrypted_usk.py --request-id {q(request_id)}",
         ),
         (
             "Restauração da USK no container OpenABE",
@@ -241,7 +298,7 @@ init_state()
 
 
 st.title("IIoT ABE Blockchain PoC")
-st.caption("Interface de demonstração para Blockchain, OpenABE, ECIES e dados IIoT")
+st.caption("Interface de demonstração para Blockchain, OpenABE, ECIES, MQTT e dados IIoT")
 
 st.markdown(
     """
@@ -267,9 +324,9 @@ with tab_dashboard:
 
     st.markdown(
         """
-A PoC demonstra um fluxo de compartilhamento seguro de dados IIoT utilizando
-blockchain para rastreabilidade, OpenABE para controle criptográfico de acesso
-e ECIES para proteção da chave ABE entregue ao consumidor.
+A PoC demonstra um fluxo de compartilhamento seguro de dados IIoT utilizando MQTT
+para entrada de dados do ESP32/DHT22, blockchain para rastreabilidade, OpenABE para
+controle criptográfico de acesso e ECIES para proteção da chave ABE entregue ao consumidor.
 """
     )
 
@@ -286,16 +343,27 @@ e ECIES para proteção da chave ABE entregue ao consumidor.
             """
 | Componente | Papel na PoC |
 |---|---|
-| Blockchain Besu | Registro de políticas, atributos, solicitações e grants |
+| ESP32/DHT22 | Gera leituras reais de temperatura e umidade |
+| MQTT | Transporta o payload do sensor no tópico plain |
+| Blockchain Besu | Registra políticas, atributos, solicitações e grants |
 | Smart Contract | Coordena os registros on-chain da arquitetura |
 | Attribute Authority | Gera a chave ABE com os atributos do consumidor |
-| OpenABE | Realiza criptografia e descriptografia baseada em atributos |
+| OpenABE | Cifra e descriptografa o payload com CP-ABE |
 | ECIES | Protege a entrega da chave ABE ao consumidor |
 | Subscriber | Recupera a chave protegida e tenta descriptografar o dado |
 """
         )
 
     with col2:
+        st.subheader("Última leitura MQTT cifrada")
+
+        mqtt_payload = st.session_state.get("last_mqtt_payload")
+
+        if mqtt_payload:
+            st.json(mqtt_payload)
+        else:
+            st.info("Nenhuma leitura MQTT cifrada nesta sessão.")
+
         st.subheader("Resultado da última descriptografia guiada")
 
         payload = st.session_state.get("last_payload")
@@ -311,8 +379,9 @@ with tab_flow:
 
     st.markdown(
         """
-Execute a PoC em etapas. As ações internas de recuperação da chave e restauração
-da USK no container são automatizadas dentro da etapa de processamento da solicitação.
+Execute a PoC em etapas. A coleta MQTT recebe uma leitura real publicada pelo ESP32/DHT22
+e cifra esse payload com OpenABE. Depois, o fluxo de acesso usa blockchain, Attribute Authority,
+ECIES e OpenABE para recuperar o dado protegido.
 """
     )
 
@@ -320,10 +389,14 @@ da USK no container são automatizadas dentro da etapa de processamento da solic
 
     st.divider()
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.subheader("1. Ambiente")
+        st.subheader("1. Ambiente e cenário")
+
+        if st.button("Limpar sessão guiada", use_container_width=True):
+            clear_guided_state()
+            st.success("Estado da sessão guiada limpo.")
 
         if st.button("Verificar ambiente", use_container_width=True):
             returncode, output = run_and_store(
@@ -336,19 +409,87 @@ da USK no container são automatizadas dentro da etapa de processamento da solic
             else:
                 st.error("Falha na verificação do ambiente.")
 
+        scenario = st.selectbox(
+            "Cenário de atributos do subscriber",
+            [
+                "Autorizado: |attr1",
+                "Não autorizado: |attr3",
+                "Personalizado",
+            ],
+        )
+
+        if scenario == "Autorizado: |attr1":
+            subscriber_attributes = "|attr1"
+            st.caption("Cenário esperado: descriptografia bem-sucedida.")
+        elif scenario == "Não autorizado: |attr3":
+            subscriber_attributes = "|attr3"
+            st.caption("Cenário esperado: falha na descriptografia CP-ABE.")
+        else:
+            subscriber_attributes = st.text_input(
+                "Atributos personalizados",
+                value=st.session_state.get("selected_subscriber_attributes", "|attr1"),
+                help="Exemplos: |attr1, |attr2, |attr3, |attr1|attr2",
+            )
+
+        st.session_state["selected_subscriber_attributes"] = subscriber_attributes
+
         if st.button("Preparar estado inicial", use_container_width=True):
+            command = (
+                "python3 integrated-poc/scripts/02_bootstrap_onchain_state.py "
+                f"--subscriber-attributes {q(subscriber_attributes)}"
+            )
+
             returncode, output = run_and_store(
                 "bootstrap_log",
-                "python3 integrated-poc/scripts/02_bootstrap_onchain_state.py",
+                command,
             )
 
             if returncode == 0:
-                st.success("Estado inicial registrado na blockchain.")
+                st.success(
+                    f"Estado inicial registrado com atributos: {subscriber_attributes}"
+                )
             else:
                 st.error("Falha no bootstrap on-chain.")
 
+        st.warning(
+            "Para alternar entre cenário autorizado e não autorizado com maior controle, "
+            "use uma nova solicitação de acesso após preparar o estado inicial. "
+            "Em caso de comportamento inconsistente por estado residual, reimplante o contrato "
+            "e execute o cenário a partir do início."
+        )
+
     with col2:
-        st.subheader("2. Solicitação")
+        st.subheader("2. Sensor MQTT")
+
+        mqtt_host = st.text_input("Broker MQTT", value="127.0.0.1")
+        mqtt_port = st.number_input("Porta", value=1883, step=1)
+        mqtt_topic = st.text_input("Tópico plain", value="sensors/sensor_001/plain")
+        mqtt_timeout = st.number_input("Timeout em segundos", value=30, step=5)
+
+        if st.button("Coletar e cifrar leitura real", use_container_width=True):
+            command = (
+                "python3 integrated-poc/scripts/10_collect_mqtt_sensor_encrypt.py "
+                f"--host {q(mqtt_host)} "
+                f"--port {int(mqtt_port)} "
+                f"--plain-topic {q(mqtt_topic)} "
+                f"--timeout {int(mqtt_timeout)}"
+            )
+
+            returncode, output = run_and_store(
+                "mqtt_collect_encrypt_log",
+                command,
+            )
+
+            mqtt_payload = extract_mqtt_payload_from_log(output)
+            st.session_state["last_mqtt_payload"] = mqtt_payload
+
+            if returncode == 0:
+                st.success("Leitura MQTT recebida e cifrada com OpenABE.")
+            else:
+                st.error("Falha ao coletar ou cifrar a leitura MQTT.")
+
+    with col3:
+        st.subheader("3. Solicitação")
 
         if st.button("Criar solicitação de acesso", use_container_width=True):
             returncode, output = run_and_store(
@@ -380,8 +521,8 @@ da USK no container são automatizadas dentro da etapa de processamento da solic
                 else:
                     st.error("Falha no processamento da solicitação.")
 
-    with col3:
-        st.subheader("3. Descriptografia")
+    with col4:
+        st.subheader("4. Descriptografia")
 
         if st.button("Descriptografar payload", use_container_width=True):
             command = """
@@ -407,9 +548,17 @@ PY
             if returncode == 0 and payload:
                 st.success("Payload descriptografado com sucesso.")
             elif returncode == 0:
-                st.warning("Comando executado, mas o payload não foi identificado automaticamente.")
+                st.warning(
+                    "Comando executado, mas o payload não foi identificado automaticamente. "
+                    "Em cenário não autorizado, isso pode indicar falha esperada da descriptografia."
+                )
             else:
-                st.error("Falha na descriptografia.")
+                if subscriber_attributes == "|attr3":
+                    st.warning(
+                        "A descriptografia falhou, como esperado para o cenário não autorizado."
+                    )
+                else:
+                    st.error("Falha na descriptografia.")
 
     st.divider()
 
@@ -417,6 +566,7 @@ PY
 
     show_log("Verificação do ambiente", st.session_state["check_environment_log"])
     show_log("Bootstrap on-chain", st.session_state["bootstrap_log"])
+    show_log("Coleta MQTT e cifragem OpenABE", st.session_state["mqtt_collect_encrypt_log"], expanded=True)
     show_log("Solicitação de acesso", st.session_state["request_access_log"])
     show_log("Processamento da solicitação", st.session_state["process_access_log"], expanded=True)
     show_log("Descriptografia do payload", st.session_state["decrypt_log"], expanded=True)
@@ -429,6 +579,11 @@ with tab_full_demo:
         """
 Esta opção executa o fluxo completo por meio do script `run_full_demo.sh`.
 Ao final, são gerados logs e um arquivo `demo_summary.json` em uma pasta com timestamp.
+
+A demo completa automatizada usa o script shell atual. Caso você queira incluir uma leitura
+real do ESP32/DHT22 na demo completa, execute primeiro a etapa **Coletar e cifrar leitura real**
+na aba **Fluxo guiado** ou adapte o `run_full_demo.sh` para chamar o script MQTT antes da
+solicitação de acesso.
 
 Esta aba mostra somente execuções feitas pelo botão **Executar demo completa**.
 Execuções feitas pelo fluxo guiado aparecem na aba **Visão geral** e nos logs da sessão atual.
@@ -555,6 +710,28 @@ A interface foi criada para melhorar a reprodutibilidade e a demonstração da P
 Ela permite executar o fluxo de forma guiada, consultar logs e visualizar evidências
 sem depender exclusivamente de comandos manuais no terminal.
 
+### Cenários autorizado e não autorizado
+
+A interface permite preparar o estado inicial com diferentes atributos para o subscriber.
+No cenário autorizado, o subscriber recebe `|attr1`, que satisfaz a política `attr1 or attr2`.
+No cenário não autorizado, o subscriber recebe `|attr3`, que não satisfaz essa política.
+
+A Attribute Authority continua gerando a chave OpenABE com os atributos registrados
+na blockchain. A falha ou sucesso de acesso ocorre no momento da descriptografia CP-ABE,
+não por uma decisão manual da Attribute Authority.
+
+### Entrada real do sensor via MQTT
+
+Na versão com coleta MQTT, o ESP32/DHT22 publica leituras reais no tópico
+`sensors/sensor_001/plain`. A interface aciona um script Python que assina esse
+tópico, recebe uma mensagem JSON, cifra o payload com OpenABE de acordo com a
+política configurada e atualiza o ciphertext atual no container OpenABE.
+
+Depois disso, o fluxo de acesso permanece o mesmo: o consumidor solicita acesso,
+a Attribute Authority gera uma chave ABE com os atributos registrados na blockchain,
+a chave é protegida com ECIES, o consumidor recupera a encUSK, restaura a USK e
+tenta descriptografar o ciphertext.
+
 ### Diferença entre fluxo guiado e demo completa
 
 A interface possui dois modos de execução. O **fluxo guiado** permite demonstrar
@@ -598,17 +775,21 @@ consumidor satisfizerem a política aplicada ao dado cifrado.
 
     st.code(
         """
-1. O consumidor possui atributos registrados na blockchain.
-2. O dado IIoT é cifrado com uma política CP-ABE.
-3. O consumidor registra uma solicitação de acesso on-chain.
-4. A Attribute Authority consulta os atributos do consumidor na blockchain.
-5. A Attribute Authority gera uma chave OpenABE com esses atributos.
-6. A chave ABE é protegida com ECIES.
-7. A chave protegida e seu hash são registrados na blockchain.
-8. O consumidor recupera e descriptografa a chave protegida.
-9. A USK é restaurada no ambiente OpenABE.
-10. O consumidor tenta descriptografar o payload.
-11. O OpenABE libera ou bloqueia a recuperação do dado conforme a política do ciphertext.
+1. O ESP32/DHT22 publica uma leitura real no tópico MQTT plain.
+2. A aplicação coleta essa leitura e cifra o payload com OpenABE.
+3. O ciphertext atual do OpenABE passa a representar a leitura recém-coletada.
+4. O estado on-chain é preparado com atributos do subscriber.
+5. No cenário autorizado, os atributos são |attr1.
+6. No cenário não autorizado, os atributos são |attr3.
+7. O consumidor registra uma solicitação de acesso on-chain.
+8. A Attribute Authority consulta os atributos do consumidor na blockchain.
+9. A Attribute Authority gera uma chave OpenABE com esses atributos.
+10. A chave ABE é protegida com ECIES.
+11. A chave protegida e seu hash são registrados na blockchain.
+12. O consumidor recupera e descriptografa a chave protegida.
+13. A USK é restaurada no ambiente OpenABE.
+14. O consumidor tenta descriptografar o payload.
+15. O OpenABE libera ou bloqueia a recuperação do dado conforme a política do ciphertext.
 """,
         language="text",
     )

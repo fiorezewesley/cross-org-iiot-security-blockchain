@@ -2,6 +2,8 @@ from pathlib import Path
 import subprocess
 from typing import Optional
 
+
+
 from config import OPENABE_CONTAINER, OPENABE_WORKDIR, OPENABE_BINARY
 
 
@@ -247,3 +249,34 @@ class OpenABEClient:
         stdout, _ = self.decrypt_current_ciphertext()
 
         return stdout
+
+    def export_usk_from_container(self, output_path: Path, source_path: str = "/openabe/examples/state/usk_key0.bin") -> Path:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        command = [
+            "docker",
+            "cp",
+            f"{self.container}:{source_path}",
+            str(output_path),
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Failed to export OpenABE USK from container.\n"
+                f"command: {' '.join(command)}\n"
+                f"stdout: {result.stdout}\n"
+                f"stderr: {result.stderr}"
+            )
+
+        if not output_path.exists():
+            raise FileNotFoundError(f"Exported USK file not found: {output_path}")
+
+        return output_path
