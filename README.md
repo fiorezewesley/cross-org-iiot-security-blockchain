@@ -2,123 +2,161 @@
 
 ## Overview
 
-This repository contains the implementation and documentation of an architecture for data sharing between organizations in Industrial Internet of Things (IIoT) environments. The proposal combines blockchain, MQTT-based communication, and Attribute-Based Cryptography (ABE) to support privacy-preserving interoperability between distinct entities.
+This repository contains the implementation and documentation of a prototype architecture for secure data sharing between organizations in Industrial Internet of Things (IIoT) environments. The proposal combines MQTT-based communication, Attribute-Based Encryption (ABE), ECIES-based key protection, and blockchain-supported governance using Hyperledger Besu.
 
-The current prototype focuses on the integration between a local blockchain network, an MQTT broker, and a Python-based orchestrator responsible for receiving IIoT messages and recording metadata on the blockchain. Sensitive content remains off the blockchain, while the blockchain maintains an immutable audit log of interactions.
+The implemented prototype validates an integrated workflow in which IIoT sensor data is protected off-chain using CP-ABE, transmitted through an MQTT broker, and governed through on-chain records related to devices, attributes, access policies, access requests, encrypted key grants, integrity hashes, and audit events. Sensitive sensor data and ABE cryptographic operations remain off-chain, while the blockchain layer provides traceability and coordination for access-related metadata.
 
 ## Research Objective
 
-The main objective of this project is to investigate how MQTT, blockchain, and attribute-based cryptography (ABE) technologies can support auditable and granular data sharing in distributed IIoT scenarios involving multiple organizations, creating a viable interoperability architecture between these companies.
+The main objective of this project is to investigate how MQTT, blockchain, and Attribute-Based Encryption (ABE) can support auditable, granular, and privacy-preserving data sharing in distributed IIoT scenarios involving multiple organizations.
 
 ## Current Scope
 
 At its current stage, the repository includes:
 
-- a local Hyperledger Besu network for on-chain logging
-- an Eclipse Mosquitto broker for MQTT-based communication
-- a Python orchestrator for MQTT and blockchain integration
-- a Solidity smart contract for metadata logging
-- technical documentation intended for academic evaluation and reproducibility
-- an ABE module implemented and tested using the OpenABE library
+* a local Hyperledger Besu network for on-chain governance records;
+* an Eclipse Mosquitto broker for MQTT-based communication;
+* an integrated proof-of-concept module for MQTT, ABE, ECIES, Attribute Authority, and blockchain interaction;
+* a Solidity smart contract named `AccessPolicyRegistryV3`;
+* Python orchestration scripts for environment bootstrap, sensor data collection, access requests, Attribute Authority processing, encrypted key retrieval, and payload decryption;
+* an ABE module implemented and tested using the OpenABE library;
+* ECIES-based utilities for protecting the delivery of OpenABE User Secret Keys (USKs);
+* a Streamlit interface for guided execution and validation;
+* technical documentation intended for academic evaluation and reproducibility.
 
 ## Architecture Summary
 
-The architecture is divided into three main layers:
+The architecture is organized into two main layers:
 
-- **Communication layer:** MQTT broker (Eclipse Mosquitto)
-- **Coordination layer:** Python orchestrator
-- **Audit and integrity layer:** ABE and Hyperledger Besu with Solidity smart contracts
+* **Off-chain operational layer:** includes IIoT devices, MQTT broker, producer-side and subscriber-side cryptographic frameworks, OpenABE-based CP-ABE operations, ECIES key protection, and the Attribute Authority.
+* **On-chain governance layer:** implemented with Hyperledger Besu and the `AccessPolicyRegistryV3` smart contract, responsible for registering devices, attributes, topic policies, access requests, encrypted key grants, protected message metadata, integrity hashes, and audit events.
 
-The current experimental flow is:
+The integrated workflow can be summarized as:
 
-IIoT device → MQTT broker → Orchestrator → Smart Contract on Besu
+```text
+Sensor payload
+→ Producer-side cryptographic framework
+→ CP-ABE protected payload
+→ MQTT broker
+→ Subscriber-side cryptographic framework
+→ USK retrieval and validation
+→ CP-ABE decryption attempt
+→ Plaintext recovery only when attributes satisfy the access policy
+```
+
+The blockchain does not store plaintext sensor data and does not execute ABE cryptographic operations. Its role is to coordinate and audit access-related records.
 
 ## Technology Stack
 
-- Blockchain: Hyperledger Besu
-- Smart Contracts: Solidity
-- Messaging: Eclipse Mosquitto (MQTT)
-- Backend: Python
-- Blockchain Integration: Web3.py
-- Cryptographic Method: ABE
-- MQTT Integration: Paho MQTT
-- Infrastructure: Docker and Docker Compose
+* Blockchain: Hyperledger Besu
+* Smart Contracts: Solidity
+* Smart Contract: `AccessPolicyRegistryV3`
+* Messaging: Eclipse Mosquitto (MQTT)
+* Backend and Orchestration: Python
+* Blockchain Integration: Web3.py
+* MQTT Integration: Paho-MQTT
+* Cryptographic Method: CP-ABE with OpenABE
+* Key Protection: ECIES
+* Interface: Streamlit
+* Infrastructure: Docker and Docker Compose
 
 ## Repository Structure
 
 ```text
-
 .
-
-├── contracts/ # Solidity Smart Contracts
-├── orchestrator/ # Python-based orchestration service
-├── docs/ # Documentation for GitHub Pages
-├── scripts/ # Auxiliary scripts
-├── docker-compose.yml # Infrastructure definition
-├── README.md # Repository overview
-└── .gitignore # Files ignored by Git
-
+├── abe-experiments/          # ABE experiments and cryptographic overhead evaluation
+├── contracts/                # Solidity smart contracts used in earlier stages
+├── docs/                     # Documentation for GitHub Pages
+├── infra/                    # Infrastructure configuration files
+├── integrated-poc/           # Integrated MQTT, ABE, ECIES, AA, and blockchain proof of concept
+├── orchestrator/             # Python-based orchestration components
+├── scripts/                  # Auxiliary scripts
+├── docker-compose.yml        # Infrastructure definition
+├── README.md                 # Repository overview
+└── .gitignore                # Files ignored by Git
 ```
+
+## Integrated Proof of Concept
+
+The integrated proof of concept is available in:
+
+```text
+integrated-poc/
+```
+
+This module validates the complete workflow involving:
+
+* on-chain bootstrap of producers, subscribers, attributes, and topic policies;
+* MQTT-based sensor data collection;
+* CP-ABE payload protection using OpenABE;
+* access request registration on Hyperledger Besu;
+* off-chain Attribute Authority processing;
+* generation of OpenABE User Secret Keys associated with subscriber attributes;
+* ECIES-based protection of the generated USK;
+* encrypted key grant registration on-chain;
+* subscriber-side encrypted key retrieval;
+* integrity verification through hashes;
+* decryption success when attributes satisfy the policy;
+* decryption failure when attributes do not satisfy the policy.
+
+## ABE Experiments for IIoT Sensor Payloads
+
+The repository also includes experiments focused on the cryptographic behavior and overhead of ABE-based protection.
+
+The ABE experiments are available in:
+
+```text
+abe-experiments/
+```
+
+This module evaluates:
+
+* encryption and decryption correctness;
+* processing overhead;
+* ciphertext size expansion;
+* Base64 encoding overhead;
+* ABE-protected payload size;
+* access policy complexity;
+* accumulated overhead with real ESP32/DHT22 sensor measurements.
 
 ## Running the Environment
 
-### Starting the infrastructure
+### Starting the base infrastructure
 
 ```bash
 ./scripts/01_start_infra.sh
 ```
 
-### Testing the MQTT publication
+### Running the integrated proof of concept
 
-```bash
-mosquitto_pub -h localhost -p 1883 \
+The integrated workflow is executed from the `integrated-poc/` directory. The module includes environment validation scripts, bootstrap scripts, Attribute Authority processing, encrypted key retrieval, and guided execution through the Streamlit interface.
 
--t "sensors/sensor_001/data" -m '{"sensor_id": "sensor_001", "temp": 23.7, "humidity": 60}'
+For details, see:
 
-```
-
-### Check blockchain chain ID
-
-```bash
-curl -s -X POST http://127.0.0.1:8545 \
--H "Content-Type: application/json" \
---data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
-
-```
-
-Expected result:
-
-```
-0x539
+```text
+integrated-poc/README.md
 ```
 
 ## Documentation
 
-The repository documentation is organized in the `docs/` directory and is intended for publication on GitHub Pages for dissertation evaluation and technical navigation.
+The technical documentation is organized in the `docs/` directory and is published through GitHub Pages.
 
-## Current Experimental Scope
+Documentation:
 
-This repository currently includes the MQTT-blockchain integration prototype and an isolated ABE experimental module for evaluating cryptographic protection over IIoT sensor payloads.
+```text
+https://fiorezewesley.github.io/cross-org-iiot-security-blockchain/
+```
 
-The complete end-to-end integration among MQTT, ABE, and blockchain is part of the broader proposed architecture and can be implemented as a subsequent development step.
+Source code repository:
 
-## ABE Experiments for IIoT Sensor Payloads
+```text
+https://github.com/fiorezewesley/cross-org-iiot-security-blockchain
+```
 
-This repository also includes an experimental Attribute-Based Encryption (ABE) module for evaluating cryptographic protection over IIoT sensor payloads.
+## Academic Context
 
-The ABE experiments are available in:
+This repository supports the dissertation entitled:
 
-    abe-experiments/
+**Blockchain-Enabled ABE Framework for Secure IIoT Data Sharing Across Organizations**
 
-This module evaluates encryption and decryption correctness, processing overhead, ciphertext size expansion, MQTT protected message overhead, access policy complexity, and message volume using simulated and real sensor data.
-
-At the current stage, the repository contains two complementary experimental layers:
-
-1. the MQTT-blockchain integration prototype;
-2. the ABE-based cryptographic evaluation module.
-
-The ABE module is evaluated independently from the blockchain layer. Therefore, the current repository should not be interpreted as a fully integrated end-to-end MQTT-ABE-blockchain implementation. The complete integration among these components is part of the broader proposed architecture and can be implemented as a subsequent development step.
-
-For details, see:
-
-    abe-experiments/README.md
+The artifact was developed as part of a professional master's research project focused on secure cross-organizational IIoT data sharing, combining MQTT, Hyperledger Besu, smart contracts, and Attribute-Based Encryption.
