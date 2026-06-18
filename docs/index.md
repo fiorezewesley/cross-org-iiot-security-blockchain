@@ -30,12 +30,26 @@ The system is structured into two main layers:
 
 The blockchain does not store plaintext sensor data and does not execute ABE cryptographic operations. Its role is to coordinate and audit governance records associated with access control and key provisioning.
 
+## Demonstration Interface
+
+A Streamlit-based interface was developed to support guided execution and inspection of the integrated proof of concept. The interface centralizes the main validation steps, including environment verification, initial on-chain state preparation, MQTT sensor data collection, access request creation, Attribute Authority processing, encrypted key retrieval, integrity verification, and CP-ABE decryption.
+
+![Streamlit guided flow interface](assets/streamlit-guided-flow.png)
+
+**Figure:** Streamlit guided flow for executing the integrated proof of concept.
+
+The interface also provides access to runtime evidence, logs, execution summaries, hash verification results, decryption status, and recovered payloads. This supports reproducibility and makes it easier to inspect both authorized and unauthorized access scenarios.
+
+![Streamlit evidence and execution summary](assets/streamlit-evidence-summary.png)
+
+**Figure:** Evidence view showing key retrieval logs, integrity verification, decryption status, and recovered payload.
+
 ## Navigation
 
 * [System Architecture](architecture.md)
 * [Experimental Environment](experimental-environment.md)
 * [Experimental Results](results.md)
-* [Test](tests.md)
+* [Tests](tests.md)
 * [Source Code](code.md)
 
 ## Contribution
